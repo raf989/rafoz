@@ -1,0 +1,1 @@
+// XLS/XLSX support removed.
