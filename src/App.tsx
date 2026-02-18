@@ -59,53 +59,64 @@ const PaginationControls = ({
   label?: string;
 }) => {
   if (total <= 1) return null;
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isJumpOpen, setIsJumpOpen] = useState(false);
   const pages = useMemo(() => Array.from({ length: total }, (_, i) => i + 1), [total]);
   return (
-    <div className="flex items-center justify-center mt-10 pt-8 border-t border-gray-100 w-full">
-      <div className="flex items-center gap-3">
-        <button 
-          disabled={current === total} 
-          onClick={() => onPageChange(total)} 
-          className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-20 hover:bg-gray-50 transition-colors"
-        >
-          Last
-        </button>
-        <div 
-          className="relative"
-          tabIndex={0}
-          onBlur={() => setIsPickerOpen(false)}
-        >
+    <>
+      <div className="flex items-center justify-center mt-10 pt-8 border-t border-gray-100 w-full">
+        <div className="flex items-center gap-3">
+          <button 
+            disabled={current === 1} 
+            onClick={() => onPageChange(current - 1)} 
+            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-20 hover:bg-gray-50 transition-colors"
+          >
+            Back
+          </button>
           <button
-            onClick={() => setIsPickerOpen(v => !v)}
-            className="px-5 py-2 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-colors min-w-[120px]"
-            aria-label={`${label || 'Page'} picker`}
+            type="button"
+            onClick={() => setIsJumpOpen(true)}
+            className="px-5 py-2 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase tracking-widest min-w-[120px] text-center hover:bg-gray-50 transition-colors"
+            aria-label={`${label || 'Page'} jump`}
           >
             {current} / {total}
           </button>
-          {isPickerOpen && (
-            <div className="absolute bottom-full mb-2 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+          <button 
+            disabled={current === total} 
+            onClick={() => onPageChange(current + 1)} 
+            className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-20 hover:bg-gray-50 transition-colors"
+          >
+            Forward
+          </button>
+        </div>
+      </div>
+
+      {isJumpOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] w-full max-w-[220px] p-4 shadow-2xl">
+            <h2 className="text-[10px] font-black uppercase text-center mb-3">Go to page</h2>
+            <div className="max-h-56 overflow-y-auto rounded-2xl border border-gray-100">
               {pages.map(p => (
                 <button
                   key={p}
-                  onClick={() => { onPageChange(p); setIsPickerOpen(false); }}
+                  onClick={() => { onPageChange(p); setIsJumpOpen(false); }}
                   className={`w-full px-4 py-2 text-[10px] font-black uppercase tracking-widest text-center transition-colors ${p === current ? 'bg-black text-white' : 'hover:bg-gray-50'}`}
                 >
                   {p}
                 </button>
               ))}
             </div>
-          )}
+            <div className="flex justify-center mt-3">
+              <button
+                onClick={() => setIsJumpOpen(false)}
+                className="text-[10px] font-black opacity-30 uppercase"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
-        <button 
-          disabled={current === total} 
-          onClick={() => onPageChange(current + 1)} 
-          className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-[10px] font-black uppercase tracking-widest disabled:opacity-20 hover:bg-gray-50 transition-colors"
-        >
-          Next
-        </button>
-      </div>
-    </div>
+      )}
+    </>
   );
 };
 
@@ -447,7 +458,7 @@ const App: React.FC = () => {
         });
       }
 
-      updateActiveTable(t => ({ ...t, rows: [...newRows, ...t.rows] }));
+      updateActiveTable(t => ({ ...t, rows: [...t.rows, ...newRows] }));
       setNewRowValues({}); setIsAddingRow(false); setRowsPage(1);
     } else {
       setIsProcessing(true);
@@ -475,7 +486,7 @@ const App: React.FC = () => {
           }
           return { id: rowId, values, updatedAt: now };
         });
-        updateActiveTable(t => ({ ...t, rows: [...newRows, ...t.rows] }));
+        updateActiveTable(t => ({ ...t, rows: [...t.rows, ...newRows] }));
         setNewRowValues({}); setIsAddingRow(false); setIsProcessing(false); setRowsPage(1);
       }, 50);
     }
@@ -507,9 +518,12 @@ const App: React.FC = () => {
 
   const confirmExportCSV = () => {
     if (!activeTable || !modalInput.trim()) return;
-    const header = activeTable.columns.map(c => c.label);
+    const columnsForExport = activeTable.autoIdEnabled && activeTable.autoIdColumnId
+      ? activeTable.columns.filter(c => c.id !== activeTable.autoIdColumnId)
+      : activeTable.columns;
+    const header = columnsForExport.map(c => c.label);
     const rows = activeTable.rows.map(row => (
-      activeTable.columns.map(col => {
+      columnsForExport.map(col => {
         return row.values[col.id] || '';
       })
     ));
@@ -886,6 +900,9 @@ const App: React.FC = () => {
     reader.onload = () => {
       const idColumnId = activeTable.autoIdEnabled ? activeTable.autoIdColumnId : undefined;
       const hasIdColumn = !!idColumnId && activeTable.columns.some(c => c.id === idColumnId);
+      const idColumnLabelNorm = hasIdColumn
+        ? normalizeLabel(activeTable.columns.find(c => c.id === idColumnId)?.label || 'id')
+        : null;
       const nextIdStart = (() => {
         if (!hasIdColumn || !idColumnId) return 1;
         const maxId = activeTable.rows.reduce((max, row) => {
@@ -906,6 +923,20 @@ const App: React.FC = () => {
       const headers = rows[0].map(h => h.trim());
       if (headers[0]) headers[0] = headers[0].replace(/^\uFEFF/, '');
       const dataRows = rows.slice(1).filter(r => r.some(cell => cell.trim() !== ''));
+      const includedHeaderIndexes: number[] = [];
+      const filteredHeaders: string[] = [];
+      headers.forEach((raw, idx) => {
+        const label = raw || `Column ${idx + 1}`;
+        const norm = normalizeLabel(label);
+        if (idColumnLabelNorm && norm === idColumnLabelNorm) return;
+        filteredHeaders.push(label);
+        includedHeaderIndexes.push(idx);
+      });
+      if (filteredHeaders.length === 0) {
+        alert('CSV содержит только ID колонку.');
+        event.target.value = '';
+        return;
+      }
       updateActiveTable(t => {
         const existingByLabel = new Map(t.columns.map(c => [normalizeLabel(c.label), c]));
         const usedExisting = new Set<string>();
@@ -913,7 +944,7 @@ const App: React.FC = () => {
         const addedColumns: Column[] = [];
         const headerToColId: string[] = [];
         const now = Date.now();
-        headers.forEach((raw, idx) => {
+        filteredHeaders.forEach((raw, idx) => {
           const label = raw || `Column ${idx + 1}`;
           const norm = normalizeLabel(label);
           let existing = existingByLabel.get(norm);
@@ -933,7 +964,8 @@ const App: React.FC = () => {
         const newRows: DynamicRow[] = dataRows.map((row, rIdx) => {
           const values: Record<string, string> = {};
           headerToColId.forEach((cid, i) => {
-            values[cid] = row[i] ?? '';
+            const sourceIndex = includedHeaderIndexes[i];
+            values[cid] = row[sourceIndex] ?? '';
           });
           newColumns.forEach(c => { if (!(c.id in values)) values[c.id] = ''; });
           if (hasIdColumn && idColumnId) {
